@@ -242,6 +242,12 @@
   .site-btn.district:hover { border-color: #a28bff; color: #c9bbff; }
   .site-btn.ticketnew:hover { border-color: #ff6b6b; color: #ffb3b3; }
   .chip .site { margin-left: auto; font-size: 9.5px; font-weight: 800; color: var(--dim); letter-spacing: .03em; }
+  .mgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 8px; margin-top: 8px; max-height: 330px; overflow-y: auto; padding: 2px; }
+  .mcard { display: flex; flex-direction: column; align-items: stretch; gap: 3px; padding: 5px; border-radius: 10px; text-align: left; }
+  .mcard .poster { aspect-ratio: 2 / 3; border-radius: 7px; background: #222a26 center/cover no-repeat; }
+  .mcard .mn { font-size: 11.5px; font-weight: 700; line-height: 1.2; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .mcard .ml { font-size: 10px; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .mcard.on { border-color: var(--doom); box-shadow: 0 0 0 2px var(--doom); }
 </style>
 </head>
 <body>
@@ -257,6 +263,8 @@
     <symbol id="i-cal" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></symbol>
     <symbol id="i-film" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 4v16M17 4v16M3 9h4M3 15h4M17 9h4M17 15h4"/></symbol>
     <symbol id="i-ticket" viewBox="0 0 24 24"><path d="M3 8a2 2 0 0 0 0 4v0a2 2 0 0 1 0 4v2h18v-2a2 2 0 0 1 0-4 2 2 0 0 1 0-4V6H3z"/><path d="M14 6v12" stroke-dasharray="2 2"/></symbol>
+    <symbol id="i-pin" viewBox="0 0 24 24"><path d="M12 21s-7-6.2-7-11.5a7 7 0 0 1 14 0C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></symbol>
     <symbol id="i-screen" viewBox="0 0 24 24"><path d="M3 16c5-3 13-3 18 0"/><path d="M8 20h8"/></symbol>
   </defs>
 </svg>
@@ -309,6 +317,19 @@
   <div class="dhead"><h2>Settings</h2><button id="closeBtn" aria-label="Close">✕</button></div>
   <div class="dbody">
     <div class="sec">
+      <h3>Movie &amp; location</h3>
+      <div class="row">
+        <label class="f">City <select id="citySel"></select></label>
+        <label class="f">Other city
+          <span style="display:flex;gap:6px"><input type="text" id="cityOther" placeholder="e.g. coimbatore"><button id="cityGo" type="button">Go</button></span>
+        </label>
+      </div>
+      <p class="hint" id="cityMsg" style="margin:8px 0"></p>
+      <input type="search" id="mSearch" placeholder="Search movies…">
+      <div class="mgrid" id="mgrid"></div>
+    </div>
+
+    <div class="sec">
       <h3>Websites to check</h3>
       <p class="hint">Same seats on both — read from District.</p>
       <div id="sitesBox"></div>
@@ -320,7 +341,7 @@
     <div class="sec">
       <h3>Theatres to alert on</h3>
             <div class="chosen" id="chosen"></div>
-      <input type="search" id="cSearch" placeholder="Search Chennai theatres… (e.g. Sathyam, AGS, INOX)">
+      <input type="search" id="cSearch" placeholder="Search theatres…">
       <div class="clist" id="clist"></div>
     </div>
 
@@ -340,11 +361,7 @@
       <h3>Tracking</h3>
       <div class="row">
         <label class="f">Check every (seconds) <input type="number" id="interval" min="10" max="3600"></label>
-        <label class="f">Movie name (for notifications) <input type="text" id="movieName"></label>
       </div>
-      <label class="f" style="margin-top:10px">District movie page URL
-        <input type="text" id="movieUrl" placeholder="https://www.district.in/movies/…-MV123456">
-      </label>
       <p class="hint" style="margin-top:6px">Under 15s may get blocked.</p>
     </div>
   </div>
@@ -471,6 +488,7 @@ function render() {
   const sites = Object.keys(data.sites).map(k => SITE_LABEL[k]).join(" + ") || "none";
   const win = `${fmtTime(data.window[0])}–${fmtTime(data.window[1])}`;
   $("pills").innerHTML = [
+    `<span class="pill" title="City">${ic("pin")}${esc(data.city_name)}</span>`,
     `<span class="pill" title="Language">${ic("globe")}${esc(data.language)}</span>`,
     `<span class="pill" title="Show start window">${ic("clock")}${win}</span>`,
     `<span class="pill" title="Minimum free seats">${ic("seat")}${data.min_seats}+</span>`,
@@ -555,6 +573,9 @@ async function openSettings() {
   const r = await fetch("/api/config", { cache: "no-store" });
   const p = await r.json();
   draft = structuredClone(p.config); cinemas = p.cinemas;
+  savedCity = draft.city;
+  loadCities(draft.city, p.city_name);
+  loadCity(draft.city, true);
 
   $("sitesBox").innerHTML = Object.entries(p.sites).map(([k, s]) => `
     <label class="site ${s.supported ? "" : "off"}">
@@ -571,11 +592,80 @@ async function openSettings() {
       <span class="t">${esc(l)}</span></label>`).join("") || `<span class="hint">Seat classes appear here after the first check.</span>`;
   $("wStart").value = draft.window_start; $("wEnd").value = draft.window_end;
   $("interval").value = draft.interval_seconds;
-  $("movieName").value = draft.movie_name; $("movieUrl").value = draft.movie_url;
   $("cSearch").value = "";
   renderChosen(); renderCinemaList();
   $("saveMsg").textContent = "";
 }
+// ---- movie & location ----
+let savedCity = "", cityMovies = [];
+const movieId = (url) => (String(url || "").match(/-MV(\d+)/) || [])[1];
+async function loadCities(current, currentName) {
+  $("citySel").innerHTML = `<option value="${esc(current)}" selected>${esc(currentName || current)}</option>`;
+  let list = [];
+  try { list = await (await fetch("/api/cities")).json(); } catch (e) {}
+  current = $("citySel").value || current;          // the user may have switched meanwhile
+  if (!list.some(c => c.key === current)) list.unshift({ key: current, name: currentName || current });
+  $("citySel").innerHTML = list.map(c => `<option value="${esc(c.key)}" ${c.key === current ? "selected" : ""}>${esc(c.name)}</option>`).join("");
+}
+async function loadCity(city, initial = false) {
+  city = city.trim().toLowerCase().replace(/\s+/g, "-");
+  if (!city) return;
+  $("cityMsg").textContent = "Loading movies and theatres…"; $("cityMsg").style.color = "";
+  try {
+    const [mr, cr] = await Promise.all([fetch(`/api/movies?city=${encodeURIComponent(city)}`), fetch(`/api/cinemas?city=${encodeURIComponent(city)}`)]);
+    const mj = await mr.json(), cj = await cr.json();
+    if (!mr.ok) throw new Error(mj.error || "couldn't load movies");
+    cityMovies = mj.movies;
+    if (cr.ok) cinemas = cj;
+    if (![...$("citySel").options].some(o => o.value === city))
+      $("citySel").insertAdjacentHTML("afterbegin", `<option value="${esc(city)}">${esc(mj.city_name)}</option>`);
+    $("citySel").value = city;
+    if (!initial && city !== draft.city) {
+      draft.city = city;
+      if (city !== savedCity) draft.theatres = [];          // theatres belong to the old city
+      const same = cityMovies.find(m => m.id === movieId(draft.movie_url));
+      if (same) draft.movie_url = same.url; else { draft.movie_url = ""; }
+    }
+    const cur = cityMovies.find(m => m.id === movieId(draft.movie_url));
+    $("cSearch").placeholder = `Search ${mj.city_name} theatres…`;
+    $("cityMsg").textContent = `${mj.city_name}: ${cityMovies.length} movies · ${cinemas.length} theatres` +
+      (cur ? "" : " — pick a movie") + (city !== savedCity && !initial ? " · pick theatres below" : "");
+    if (cur) setLanguages(cur.languages);
+    renderMovies(); renderChosen(); renderCinemaList();
+  } catch (e) {
+    $("cityMsg").textContent = e.message; $("cityMsg").style.color = "var(--red)";
+  }
+}
+function setLanguages(langs) {
+  if (!langs || !langs.length) return;
+  const keep = langs.includes(draft.language) ? draft.language : (langs.includes("English") ? "English" : langs[0]);
+  $("lang").innerHTML = langs.map(l => `<option ${l === keep ? "selected" : ""}>${esc(l)}</option>`).join("");
+  draft.language = keep;
+}
+function renderMovies() {
+  const q = $("mSearch").value.trim().toLowerCase();
+  const sel = movieId(draft.movie_url);
+  const list = cityMovies.filter(m => !q || m.name.toLowerCase().includes(q))
+    .sort((a, b) => (b.id === sel) - (a.id === sel));
+  $("mgrid").innerHTML = list.map(m => `
+    <button type="button" class="mcard ${m.id === sel ? "on" : ""}" data-mid="${esc(m.id)}" title="${esc(m.name)}">
+      <span class="poster" style="${m.image ? `background-image:url('${esc(m.image)}')` : ""}"></span>
+      <span class="mn">${esc(m.name)}</span>
+      <span class="ml">${esc((m.languages || []).slice(0, 3).join(" · "))}</span>
+    </button>`).join("") || `<span class="hint">No movies match.</span>`;
+}
+$("citySel").addEventListener("change", e => loadCity(e.target.value));
+$("cityGo").addEventListener("click", () => loadCity($("cityOther").value));
+$("cityOther").addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); loadCity(e.target.value); } });
+$("mSearch").addEventListener("input", renderMovies);
+$("mgrid").addEventListener("click", e => {
+  const b = e.target.closest(".mcard"); if (!b) return;
+  const m = cityMovies.find(x => x.id === b.dataset.mid); if (!m) return;
+  draft.movie_url = m.url; draft.movie_name = m.name;
+  setLanguages(m.languages); renderMovies();
+  $("cityMsg").textContent = `Tracking: ${m.name}`;
+});
+
 function closeSettings() {
   document.body.classList.remove("modal-open");
   $("scrim").classList.remove("on"); $("drawer").classList.remove("on");
@@ -621,8 +711,9 @@ $("saveBtn").addEventListener("click", async () => {
   Object.assign(draft, {
     open_links_on: $("openOn").value, language: $("lang").value,
     min_seats: Number($("minSeats").value), window_start: $("wStart").value, window_end: $("wEnd").value,
-    interval_seconds: Number($("interval").value), movie_name: $("movieName").value, movie_url: $("movieUrl").value,
+    interval_seconds: Number($("interval").value),
   });
+  if (!draft.movie_url) { $("saveMsg").textContent = "Pick a movie."; $("saveMsg").className = "msg err"; return; }
   if (!draft.sites.district && !draft.sites.ticketnew) { $("saveMsg").textContent = "Turn on at least one website."; $("saveMsg").className = "msg err"; return; }
   $("saveBtn").disabled = true; $("saveMsg").textContent = "Saving…"; $("saveMsg").className = "msg";
   try {

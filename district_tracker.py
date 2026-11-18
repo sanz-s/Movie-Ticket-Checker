@@ -60,7 +60,22 @@ def default_state_dir():
 STATE_DIR = default_state_dir()
 STATE_FILE = os.path.join(STATE_DIR, "state.json")
 CONFIG_FILE = os.path.join(STATE_DIR, "config.json")
-CINEMAS_URL = "https://www.district.in/movies/cinemas-in-chennai"
+DISTRICT = "https://www.district.in/movies"
+CITY_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
+MOVIE_URL_RE = re.compile(r"district\.in/movies/(?P<slug>.+?)-movie-tickets(?:-in-(?P<city>[a-z0-9-]+))?-MV(?P<id>\d+)")
+
+
+def cinemas_url(city):
+    return f"{DISTRICT}/cinemas-in-{city}"
+
+
+def movie_url_for(slug, movie_id, city):
+    return f"{DISTRICT}/{slug}-movie-tickets-in-{city}-MV{movie_id}"
+
+
+def city_name(city):
+    """'delhi-ncr' -> 'Delhi NCR'"""
+    return " ".join(w.upper() if w in ("ncr",) else w.title() for w in city.split("-"))
 FAIL_ALERT_AFTER = 3  # consecutive failed runs before a "tracker broken" alert
 
 SITES = {
@@ -73,6 +88,7 @@ SITES = {
 }
 
 DEFAULT_CONFIG = {
+    "city": "chennai",
     "movie_name": "Avengers: Doomsday",
     "movie_url": "https://www.district.in/movies/avengers-doomsday-movie-tickets-in-chennai-MV176735",
     "language": "English",
@@ -135,8 +151,16 @@ def validate_config(raw):
                 cfg["sites"][s] = bool(raw["sites"][s]) and SITES[s]["supported"]
     if cfg["open_links_on"] not in ("district", "ticketnew"):
         cfg["open_links_on"] = "district"
-    if not re.search(r"district\.in/movies/.+-MV\d+$", cfg["movie_url"]):
+    if raw.get("city"):
+        city = str(raw["city"]).strip().lower().replace(" ", "-")
+        if not CITY_RE.match(city):
+            raise ValueError("city must look like 'chennai' or 'delhi-ncr'")
+        cfg["city"] = city
+    m = MOVIE_URL_RE.search(cfg["movie_url"])
+    if not m:
         raise ValueError("movie_url must be a District movie page ending in -MV<number>")
+    # keep the movie link pointing at the chosen city
+    cfg["movie_url"] = movie_url_for(m["slug"], m["id"], cfg["city"])
     if isinstance(raw.get("theatres"), list):
         out, seen = [], set()
         for t in raw["theatres"]:
@@ -192,7 +216,7 @@ def fetch(url, tries=3):
 
 
 def next_data(page_html):
-    m = re.search(r'<script id="__NEXT_DATA__"[^>]*>(.*?)</script>', page_html, re.S)
+    m = re.search(r'<script[^>]*id="__NEXT_DATA__"[^>]*>(.*?)</script>', page_html, re.S)
     if not m:
         raise RuntimeError("no __NEXT_DATA__ in page (layout changed or blocked?)")
     return json.loads(m.group(1))
@@ -202,14 +226,18 @@ def movie_sessions(page_html):
     ms = next_data(page_html)["props"]["pageProps"]["data"]["serverState"]["movieSessions"]
     if not ms:
         raise RuntimeError("movieSessions empty")
-    return next(iter(ms.values()))  # key varies (e.g. 'mm5dpqtqjz2026-12-18')
+    key, val = next(iter(ms.items()))  # key varies (e.g. 'mm5dpqtqjz2026-12-18')
+    val["_key"] = re.sub(r"\d{4}-\d{2}-\d{2}$", "", key)
+    return val
 
 
 def languages(ms):
     for bucket in ms["meta"].get("filterBuckets") or []:
         if bucket.get("bucketKey") == "language":
             return {b["title"]: b["key"] for b in bucket.get("buckets", []) if b.get("title")}
-    return {}
+    # only one language in this city: no filter, the page's own format is it
+    lang = ms["meta"].get("movieLanguage") or "Default"
+    return {lang: ms.get("_key")} if ms.get("_key") else {}
 
 
 def ticketnew_url(cfg, frmt, date):
@@ -377,9 +405,9 @@ def matching(shows):
     return [s for s in shows if s["theatre"] and s["in_window"]]
 
 
-def fetch_cinema_directory():
-    """cinema_id -> {name, address, logo, photo, url} for all Chennai cinemas."""
-    page = fetch(CINEMAS_URL)
+def fetch_cinema_directory(city="chennai"):
+    """cinema_id -> {name, address, logo, photo, url} for a city's cinemas."""
+    page = fetch(cinemas_url(city))
     urls = {int(cid): u for u, cid in
             re.findall(r'href="(https://www\.district\.in/movies/[a-z0-9-]+-CD(\d+))"', page)}
     out = {}
@@ -401,6 +429,52 @@ def fetch_cinema_directory():
                 walk(v)
     walk(next_data(page))
     return out
+
+
+def fetch_city_movies(city):
+    """Movies listed on District for a city: [{id, name, image, languages, ...}].
+    Raises ValueError if District doesn't know the city."""
+    try:
+        page = fetch(f"{DISTRICT}/{city}-movie-tickets", tries=1)
+    except RuntimeError as e:
+        if "404" in str(e):
+            raise ValueError(f"'{city}' isn't a District city") from None
+        raise
+    movies = {}
+
+    def walk(o):
+        if isinstance(o, dict):
+            md = o.get("MovieData")
+            if isinstance(md, dict) and md.get("movie_id") and md.get("name"):
+                movies.setdefault(str(md["movie_id"]), md)
+            for v in o.values():
+                walk(v)
+        elif isinstance(o, list):
+            for v in o:
+                walk(v)
+    walk(next_data(page))
+    out = []
+    for mid, md in movies.items():
+        m = MOVIE_URL_RE.search(md.get("web_url") or "")
+        if not m:
+            continue
+        try:
+            release = dt.datetime.fromtimestamp(int(md.get("release_date") or 0), IST).date().isoformat()
+        except (ValueError, OSError):
+            release = ""
+        out.append({"id": mid, "name": md["name"], "image": md.get("image") or "",
+                    "languages": md.get("languages") or [], "censor": md.get("censor") or "",
+                    "genres": md.get("genres") or [], "release": release,
+                    "url": movie_url_for(m["slug"], mid, city)})
+    out.sort(key=lambda x: x["name"].lower())
+    return out
+
+
+def fetch_popular_cities():
+    """City keys District features on its movies home page."""
+    page = fetch(f"{DISTRICT}/", tries=1)
+    keys = sorted(set(re.findall(r'\\?"city_?[kK]ey\\?":\\?"([a-z0-9-]+)', page)) - {"all"})
+    return [{"key": k, "name": city_name(k)} for k in keys]
 
 
 # ---------------------------------------------------------------- notify ---

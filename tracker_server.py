@@ -40,12 +40,16 @@ class Tracker:
         self.error, self.checking, self.check_count = None, False, 0
         self.fresh_ids = set()
         self.seat_cache, self.seat_lock = {}, threading.Lock()
+        self.lookup_cache = {}
 
     # ---- config ----
     def set_config(self, raw):
         cfg = T.validate_config(raw)        # raises ValueError on bad input
         T.save_config(cfg)
         with self.lock:
+            if cfg["city"] != self.cfg["city"]:   # new city: its own theatre list
+                self.directory, self.directory_at = {}, 0.0
+            self.seat_cache.clear()
             self.cfg = cfg
             self.result = None              # old results used old filters
             self.fresh_ids.clear()
@@ -67,9 +71,11 @@ class Tracker:
     def refresh_directory(self, force=False):
         if force or not self.directory or time.time() - self.directory_at > DIRECTORY_REFRESH:
             try:
-                d = T.fetch_cinema_directory()
+                city = self.cfg["city"]
+                d = self.cinemas_for(city)
                 with self.lock:
-                    self.directory, self.directory_at = d, time.time()
+                    if city == self.cfg["city"]:
+                        self.directory, self.directory_at = d, time.time()
             except Exception as e:  # noqa: BLE001  (logos are nice-to-have)
                 T.log(f"WARN: cinema directory: {e}")
 
@@ -101,6 +107,26 @@ class Tracker:
                 self.last_check = time.time()
                 self.check_count += 1
 
+    # ---- lookups for the Settings panel (cached) ----
+    def _cached(self, key, ttl, fn):
+        with self.lock:
+            hit = self.lookup_cache.get(key)
+        if hit and time.time() - hit[0] < ttl:
+            return hit[1]
+        val = fn()
+        with self.lock:
+            self.lookup_cache[key] = (time.time(), val)
+        return val
+
+    def cities(self):
+        return self._cached("cities", 24 * 3600, T.fetch_popular_cities)
+
+    def movies_for(self, city):
+        return self._cached(("movies", city), 30 * 60, lambda: T.fetch_city_movies(city))
+
+    def cinemas_for(self, city):
+        return self._cached(("cinemas", city), DIRECTORY_REFRESH, lambda: T.fetch_cinema_directory(city))
+
     # ---- seat map (on demand, when the user hovers a show) ----
     def seat_map(self, show_id):
         with self.lock:
@@ -131,6 +157,7 @@ class Tracker:
                                          "logo": v["logo"]})
         return {
             "config": cfg,
+            "city_name": T.city_name(cfg["city"]),
             "sites": T.SITES,
             "languages": (res or {}).get("languages") or [cfg["language"]],
             "class_labels": sorted(set((res or {}).get("class_labels") or [])
@@ -143,6 +170,7 @@ class Tracker:
             res, d, cfg = self.result, self.directory, self.cfg
             base = {
                 "movie": cfg["movie_name"], "language": cfg["language"],
+                "city": cfg["city"], "city_name": T.city_name(cfg["city"]),
                 "window": [cfg["window_start"], cfg["window_end"]],
                 "min_seats": cfg["min_seats"], "interval": cfg["interval_seconds"],
                 "front_classes": cfg["front_classes"],
@@ -219,6 +247,23 @@ def make_handler(tracker):
                 if not tracker.directory:
                     tracker.refresh_directory()
                 self._json(200, tracker.config_payload())
+            elif self.path.startswith(("/api/cities", "/api/movies", "/api/cinemas")):
+                city = (parse_qs(urlparse(self.path).query).get("city") or [""])[0].strip().lower().replace(" ", "-")
+                try:
+                    if self.path.startswith("/api/cities"):
+                        return self._json(200, tracker.cities())
+                    if not T.CITY_RE.match(city):
+                        return self._json(400, {"error": "enter a city like 'coimbatore' or 'delhi-ncr'"})
+                    if self.path.startswith("/api/movies"):
+                        return self._json(200, {"city": city, "city_name": T.city_name(city),
+                                                "movies": tracker.movies_for(city)})
+                    d = tracker.cinemas_for(city)
+                    self._json(200, sorted(({"id": cid, "name": v["name"], "address": v["address"], "logo": v["logo"]}
+                                            for cid, v in d.items()), key=lambda c: c["name"].lower()))
+                except ValueError as e:
+                    self._json(404, {"error": str(e)})
+                except Exception as e:  # noqa: BLE001
+                    self._json(502, {"error": f"District didn't answer: {e}"})
             else:
                 self._send(404, "not found", "text/plain")
 

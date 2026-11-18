@@ -42,6 +42,8 @@ use it.
 
 - Checks every N seconds (default 15s) and notifies you when a matching show
   gets seats, or when a sold-out show gets seats back
+- Pick any **city** and **movie** District lists (posters, languages). The
+  theatre list switches to that city's theatres
 - Filters: theatres, language, show start-time window, minimum free seats
 - Front-row awareness: mark cheap front-row classes (e.g. *Budget*, *Classic*).
   Their seats still count, but a show with **only** front rows left is shown
@@ -108,8 +110,9 @@ data folder. It is created with defaults on first run.
 
 | Key | Meaning | Default |
 |---|---|---|
+| `city` | District city key (`chennai`, `bengaluru`, `delhi-ncr`, `kochi`, …) | `chennai` |
 | `movie_name` | name used in notifications | `Avengers: Doomsday` |
-| `movie_url` | District movie page (`…-tickets-in-<city>-MV<id>`) | Doomsday, Chennai |
+| `movie_url` | District movie page; its city part always follows `city` | Doomsday |
 | `language` | show language | `English` |
 | `window_start` / `window_end` | show start-time window (24h `HH:MM`) | `10:00` / `16:00` |
 | `min_seats` | alert only with at least this many free seats | `1` |
@@ -120,8 +123,16 @@ data folder. It is created with defaults on first run.
 | `interval_seconds` | seconds between checks (min 10) | `15` |
 | `district_access_token` | optional, see *Seat map* below | empty |
 
-To track another movie or city, paste its District movie URL into Settings and
-pick theatres from the list (the list shows Chennai cinemas).
+### Changing movie or city
+
+Settings → **Movie & location**:
+
+1. Pick a city from the list of popular cities, or type any District city
+   (e.g. `coimbatore`, `kochi`) into **Other city** and press **Go**.
+2. Pick a movie from that city's posters. The language list follows the movie.
+3. The theatre list now shows that city's theatres. Switching city clears your
+   old theatres, so tick the new ones.
+4. **Save & re-check.** The dashboard switches to the new city and movie.
 
 ## Seat map
 
