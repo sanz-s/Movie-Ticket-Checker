@@ -11,6 +11,33 @@ Works on **macOS** and **Linux**. Pure Python standard library: no `pip install`
 > `ticketnew`), so one check covers both. BookMyShow blocks automated requests
 > and is not supported.
 
+## Disclaimer
+
+This is an **unofficial, personal-use** tool. It is not affiliated with,
+endorsed by or connected to District, Zomato, TicketNew, Paytm, BookMyShow, PVR
+INOX, Cinépolis or any cinema. All names and logos belong to their owners.
+
+- It reads publicly visible showtime pages and, for the seat-map view, an
+  **undocumented private API** of District. Automated access may be **against the
+  terms of service** of these sites, and the API can change or stop working at
+  any time.
+- It only **reads** information. It never books, holds or reserves seats. It
+  does not get around logins, queues, waiting rooms or CAPTCHAs, and it must not
+  be changed to do so.
+- **Do not use it for bulk buying, scalping or reselling tickets**, or for
+  sending high volumes of requests. Keep the check interval reasonable (60s or
+  more is gentler on their servers).
+- Seat counts and times come from third-party data and may be delayed or wrong.
+  Always confirm on the official site before booking.
+- You are solely responsible for how you use this software and for following
+  the terms of the sites you access and applicable law (e.g. India's IT Act,
+  2000). The software is provided "as is", without warranty of any kind (see
+  `LICENSE`). The authors accept no liability for any misuse, account bans,
+  blocks or losses.
+
+This is not legal advice. If you're unsure whether your use is allowed, don't
+use it.
+
 ## Features
 
 - Checks every N seconds (default 15s) and notifies you when a matching show
