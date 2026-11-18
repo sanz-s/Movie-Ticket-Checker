@@ -478,7 +478,7 @@ def fetch_popular_cities():
 
 
 # ---------------------------------------------------------------- notify ---
-def notify(title, message, subtitle=""):
+def notify(title, message, subtitle="", icon="video-display"):
     """Desktop notification: osascript on macOS, notify-send on Linux.
     Falls back to the log if neither is available."""
     try:
@@ -494,7 +494,7 @@ def notify(title, message, subtitle=""):
         if shutil.which("notify-send"):
             body = f"{subtitle}\n{message}" if subtitle else message
             subprocess.run(["notify-send", "--app-name=Ticket Tracker", "--urgency=critical",
-                            "--icon=video-display", title, body], check=False, timeout=15)
+                            f"--icon={icon}", title, body], check=False, timeout=15)
             return
     except (OSError, subprocess.SubprocessError) as e:
         log(f"WARN: notification failed: {e}")
@@ -525,8 +525,8 @@ def save_state(st):
 def record_failure(st, err):
     st["fails"] = st.get("fails", 0) + 1
     if st["fails"] >= FAIL_ALERT_AFTER and not st.get("broken_alerted"):
-        notify("⚠️ Ticket tracker broken",
-               f"{st['fails']} checks failed in a row: {str(err)[:120]}")
+        notify("Ticket tracker stopped working",
+               f"{st['fails']} checks failed in a row: {str(err)[:120]}", icon="dialog-warning")
         st["broken_alerted"] = True
     save_state(st)
 
@@ -534,7 +534,7 @@ def record_failure(st, err):
 def process_alerts(cfg, st, shows, extra_hint=""):
     """Notify for newly-available matching shows; update + save state. Returns fresh list."""
     if st.get("broken_alerted"):
-        notify("✅ Ticket tracker recovered", "Checks are working again.")
+        notify("Ticket tracker is working again", "Checks are back to normal.", icon="emblem-default")
     st["fails"], st["broken_alerted"] = 0, False
 
     need = cfg["min_seats"]
@@ -552,14 +552,14 @@ def process_alerts(cfg, st, shows, extra_hint=""):
         fresh.sort(key=lambda x: (x["date"], x["time"]))
         if len(fresh) == 1:
             s = fresh[0]
-            notify(f"🎟️ {movie} – tickets open!",
+            notify(f"Tickets open: {movie}",
                    f"{s['format']} · {s['avail']} seats left · {s['good_status']}{extra_hint}",
                    f"{s['theatre']} · {pretty_date(s['date'])} · {s['time']}")
         else:
             lines = "; ".join(f"{x['theatre']} {pretty_date(x['date'])} {x['time']}"
                               for x in fresh[:4])
             more = f" +{len(fresh) - 4} more" if len(fresh) > 4 else ""
-            notify(f"🎟️ {movie} – {len(fresh)} shows open!", lines + more + extra_hint,
+            notify(f"{len(fresh)} shows open: {movie}", lines + more + extra_hint,
                    f"{cfg['language']} · {cfg['window_start']}–{cfg['window_end']} · your theatres")
         os.makedirs(STATE_DIR, exist_ok=True)
         with open(os.path.join(STATE_DIR, "alerts.log"), "a") as f:
@@ -589,7 +589,7 @@ def main():
     a = ap.parse_args()
 
     if a.test_notify:
-        notify("🎬 Ticket tracker test", "If you can see this, Mac notifications work.")
+        notify("Ticket tracker test", "If you can see this, notifications work.")
         print("Test notification sent.")
         return
 

@@ -277,7 +277,7 @@ def make_handler(tracker):
                 tracker.wake.set()
                 self._json(200, {"ok": True})
             elif self.path == "/api/test-notify":
-                T.notify("🎬 Ticket tracker test", "Notifications from the dashboard work.")
+                T.notify("Ticket tracker test", "Notifications from the dashboard work.")
                 self._json(200, {"ok": True})
             elif self.path == "/api/config":
                 try:
