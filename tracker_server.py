@@ -125,7 +125,7 @@ class Tracker:
         return self._cached(("movies", city), 30 * 60, lambda: T.fetch_city_movies(city))
 
     def cinemas_for(self, city):
-        return self._cached(("cinemas", city), DIRECTORY_REFRESH, lambda: T.fetch_cinema_directory(city))
+        return self._cached(("cinemas", city), DIRECTORY_REFRESH, lambda: T.fetch_city_cinemas(city, movies=self.movies_for(city)))
 
     # ---- seat map (on demand, when the user hovers a show) ----
     def seat_map(self, show_id):
@@ -211,7 +211,7 @@ class Tracker:
         others = sorted((card(cid, None) for cid, c in res["cinemas"].items() if not c["theatre"]),
                         key=lambda c: c["name"])
         return {**base, "dates": res["dates"], "theatres": theatres, "others": others,
-                "warnings": res["warnings"], "loading": False}
+                "warnings": res["warnings"], "loading": False, "not_open": bool(res.get("not_open"))}
 
 
 def make_handler(tracker):

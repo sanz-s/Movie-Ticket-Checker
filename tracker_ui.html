@@ -252,6 +252,11 @@
   .dhead h2 .ic { width: 19px; height: 19px; color: var(--muted); }
   .banner { align-items: center; gap: 10px; } .banner .ic { width: 18px; height: 18px; color: var(--red); }
   .tag button { display: inline-flex; padding: 2px 4px; } .tag .ic { width: 12px; height: 12px; }
+  .mcard .mtag { align-self: flex-start; font-size: 9.5px; font-weight: 800; padding: 1px 6px; border-radius: 4px; background: #2a332e; color: var(--muted); }
+  .mcard .mtag.open { background: rgba(63,224,138,.18); color: var(--doom); }
+  .notice { display: none; align-items: center; gap: 10px; margin-top: 18px; padding: 12px 16px; border-radius: 12px;
+            border: 1px solid var(--line); background: var(--panel); color: var(--muted); }
+  .notice b { color: var(--text); } .notice .ic { width: 18px; height: 18px; color: var(--blue); }
 </style>
 </head>
 <body>
@@ -289,6 +294,7 @@
   </header>
 
   <div class="banner" id="banner"></div>
+  <div class="notice" id="notice"></div>
   <section class="summary" id="summary"></section>
 
   <div class="toolbar">
@@ -507,6 +513,9 @@ function render() {
   if (!dates.includes(view.date)) view.date = "all";
   $("dateSeg").innerHTML = dates.map(d => `<button data-v="${d}" class="${view.date === d ? "on" : ""}">${d === "all" ? "All" : fmtDate(d)}</button>`).join("");
 
+  $("notice").style.display = data.not_open ? "flex" : "none";
+  $("notice").innerHTML = data.not_open ? `${ic("clock")}<span><b>${esc(data.movie)}</b> isn't open for booking in ${esc(data.city_name)} yet. Checking every ${data.interval}s, you'll get a notification when it opens.</span>` : "";
+
   if (data.loading) {
     $("summary").innerHTML = "";
     $("grid").innerHTML = `<div class="loading">${ic("refresh")}Checking…</div>`;
@@ -616,7 +625,7 @@ async function loadCities(current, currentName) {
 async function loadCity(city, initial = false) {
   city = city.trim().toLowerCase().replace(/\s+/g, "-");
   if (!city) return;
-  $("cityMsg").textContent = "Loading movies and theatres…"; $("cityMsg").style.color = "";
+  $("cityMsg").textContent = "Loading movies and theatres… (a new city takes a few seconds)"; $("cityMsg").style.color = "";
   try {
     const [mr, cr] = await Promise.all([fetch(`/api/movies?city=${encodeURIComponent(city)}`), fetch(`/api/cinemas?city=${encodeURIComponent(city)}`)]);
     const mj = await mr.json(), cj = await cr.json();
@@ -634,7 +643,8 @@ async function loadCity(city, initial = false) {
     }
     const cur = cityMovies.find(m => m.id === movieId(draft.movie_url));
     $("cSearch").placeholder = `Search ${mj.city_name} theatres…`;
-    $("cityMsg").textContent = `${mj.city_name}: ${cityMovies.length} movies · ${cinemas.length} theatres` +
+    const nOpen = cityMovies.filter(m => m.open).length;
+    $("cityMsg").textContent = `${mj.city_name}: ${nOpen} open · ${cityMovies.length - nOpen} upcoming · ${cinemas.length} theatres` +
       (cur ? "" : " — pick a movie") + (city !== savedCity && !initial ? " · pick theatres below" : "");
     if (cur) setLanguages(cur.languages);
     renderMovies(); renderChosen(); renderCinemaList();
@@ -652,10 +662,11 @@ function renderMovies() {
   const q = $("mSearch").value.trim().toLowerCase();
   const sel = movieId(draft.movie_url);
   const list = cityMovies.filter(m => !q || m.name.toLowerCase().includes(q))
-    .sort((a, b) => (b.id === sel) - (a.id === sel));
+    .sort((a, b) => (b.id === sel) - (a.id === sel));   // otherwise keep server order: open first, then upcoming
   $("mgrid").innerHTML = list.map(m => `
     <button type="button" class="mcard ${m.id === sel ? "on" : ""}" data-mid="${esc(m.id)}" title="${esc(m.name)}">
       <span class="poster" style="${m.image ? `background-image:url('${esc(m.image)}')` : ""}"></span>
+      <span class="mtag ${m.open ? "open" : ""}">${m.open ? "Open" : (m.release ? `Upcoming · ${esc(fmtDate(m.release).replace(/^\w+ /, ""))}` : "Upcoming")}</span>
       <span class="mn">${esc(m.name)}</span>
       <span class="ml">${esc((m.languages || []).slice(0, 3).join(" · "))}</span>
     </button>`).join("") || `<span class="hint">No movies match.</span>`;
@@ -669,7 +680,7 @@ $("mgrid").addEventListener("click", e => {
   const m = cityMovies.find(x => x.id === b.dataset.mid); if (!m) return;
   draft.movie_url = m.url; draft.movie_name = m.name;
   setLanguages(m.languages); renderMovies();
-  $("cityMsg").textContent = `Tracking: ${m.name}`;
+  $("cityMsg").textContent = m.open ? `Tracking: ${m.name}` : `Tracking: ${m.name} — not open here yet, you'll be notified when it opens`;
 });
 
 function closeSettings() {

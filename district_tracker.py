@@ -222,10 +222,15 @@ def next_data(page_html):
     return json.loads(m.group(1))
 
 
+class NotOpenYet(Exception):
+    """The movie page exists but has no showtimes in this city yet."""
+
+
 def movie_sessions(page_html):
-    ms = next_data(page_html)["props"]["pageProps"]["data"]["serverState"]["movieSessions"]
+    state = next_data(page_html)["props"]["pageProps"]["data"]["serverState"]
+    ms = state.get("movieSessions")
     if not ms:
-        raise RuntimeError("movieSessions empty")
+        raise NotOpenYet()
     key, val = next(iter(ms.items()))  # key varies (e.g. 'mm5dpqtqjz2026-12-18')
     val["_key"] = re.sub(r"\d{4}-\d{2}-\d{2}$", "", key)
     return val
@@ -293,7 +298,13 @@ def collect_all(cfg):
     """Every session in the configured language, annotated with filter info."""
     if not checking_enabled(cfg):
         raise RuntimeError("no website enabled in Settings (turn on District or TicketNew)")
-    base = movie_sessions(fetch(cfg["movie_url"]))
+    try:
+        base = movie_sessions(fetch(cfg["movie_url"]))
+    except NotOpenYet:
+        # District lists the movie but no cinema in this city has opened
+        # bookings yet. Not an error: keep checking, alert when it opens.
+        return {"dates": [], "shows": [], "cinemas": {}, "warnings": [], "languages": [],
+                "class_labels": [], "not_open": True}
     langs = languages(base)
     lang_key = next((v for k, v in langs.items() if k.lower() == cfg["language"].lower()), None)
     if not lang_key:
@@ -431,15 +442,8 @@ def fetch_cinema_directory(city="chennai"):
     return out
 
 
-def fetch_city_movies(city):
-    """Movies listed on District for a city: [{id, name, image, languages, ...}].
-    Raises ValueError if District doesn't know the city."""
-    try:
-        page = fetch(f"{DISTRICT}/{city}-movie-tickets", tries=1)
-    except RuntimeError as e:
-        if "404" in str(e):
-            raise ValueError(f"'{city}' isn't a District city") from None
-        raise
+def _movie_data(page_html):
+    """movie_id -> MovieData objects found anywhere on a District listing page."""
     movies = {}
 
     def walk(o):
@@ -452,9 +456,27 @@ def fetch_city_movies(city):
         elif isinstance(o, list):
             for v in o:
                 walk(v)
-    walk(next_data(page))
+    walk(next_data(page_html))
+    return movies
+
+
+def fetch_city_movies(city):
+    """Movies for a city: those open for booking now plus upcoming ones, so you
+    can track a movie before any cinema in the city opens bookings.
+    Raises ValueError if District doesn't know the city."""
+    try:
+        now_page = fetch(f"{DISTRICT}/{city}-movie-tickets", tries=1)
+    except RuntimeError as e:
+        if "404" in str(e):
+            raise ValueError(f"'{city}' isn't a District city") from None
+        raise
+    now = _movie_data(now_page)
+    try:
+        upcoming = _movie_data(fetch(f"{DISTRICT}/upcoming-movies-in-{city}", tries=1))
+    except RuntimeError:
+        upcoming = {}
     out = []
-    for mid, md in movies.items():
+    for mid, md in {**upcoming, **now}.items():
         m = MOVIE_URL_RE.search(md.get("web_url") or "")
         if not m:
             continue
@@ -465,8 +487,34 @@ def fetch_city_movies(city):
         out.append({"id": mid, "name": md["name"], "image": md.get("image") or "",
                     "languages": md.get("languages") or [], "censor": md.get("censor") or "",
                     "genres": md.get("genres") or [], "release": release,
+                    "open": mid in now,           # bookings open in this city right now
                     "url": movie_url_for(m["slug"], mid, city)})
-    out.sort(key=lambda x: x["name"].lower())
+    # open for booking first (A-Z), then upcoming by release date
+    out.sort(key=lambda x: (not x["open"], x["name"].lower() if x["open"] else (x["release"] or "9999"), x["name"].lower()))
+    return out
+
+
+def fetch_city_cinemas(city, max_movies=6, movies=None):
+    """All District cinemas for a city: the city's cinema page (which only
+    shows theatres "near you") plus every cinema showing the city's open
+    movies. cinema_id -> {name, address, logo, photo, url}."""
+    out = fetch_cinema_directory(city)
+    try:
+        movies = [m for m in (movies if movies is not None else fetch_city_movies(city)) if m["open"]][:max_movies]
+    except (ValueError, RuntimeError):
+        movies = []
+    for m in movies:
+        try:
+            ms = movie_sessions(fetch(m["url"], tries=1))
+        except (NotOpenYet, RuntimeError, KeyError, ValueError):
+            continue
+        for c in (ms["pageData"].get("nearbyCinemas") or []) + (ms["pageData"].get("farCinemas") or []):
+            info = c.get("cinemaInfo") or {}
+            if c.get("id") and c["id"] not in out:
+                out[c["id"]] = {"name": info.get("name", ""), "address": info.get("address") or "",
+                                "logo": (c.get("cinemaMeta") or {}).get("cinemaLogoUrl") or "",
+                                "photo": "", "url": ""}
+        time.sleep(0.3)
     return out
 
 

@@ -129,9 +129,14 @@ Settings → **Movie & location**:
 
 1. Pick a city from the list of popular cities, or type any District city
    (e.g. `coimbatore`, `kochi`) into **Other city** and press **Go**.
-2. Pick a movie from that city's posters. The language list follows the movie.
+2. Pick a movie. The list has movies **open** for booking in that city and
+   **upcoming** ones with their release date, so you can track a movie before any
+   cinema there opens bookings. The dashboard then says it's not open yet, and
+   you get a notification when it opens. The language list follows the movie.
 3. The theatre list now shows that city's theatres. Switching city clears your
-   old theatres, so tick the new ones.
+   old theatres, so tick the new ones. It only has cinemas that sell on
+   District/TicketNew (e.g. Madurai has just one); theatres that sell elsewhere
+   can't be tracked.
 4. **Save & re-check.** The dashboard switches to the new city and movie.
 
 ## Seat map
