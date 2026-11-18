@@ -54,8 +54,8 @@ use it.
   - hover a time for the **real seat map**: rows, aisles, free vs booked seats
   - one click to the show's seat page on District or TicketNew
   - Settings panel for everything below, no restart needed
-- Background service that starts at login (LaunchAgent on macOS, Task
-  Scheduler on Windows, systemd user service on Linux)
+- Background service that starts at login (LaunchAgent on macOS, Startup
+  folder on Windows, systemd user service on Linux)
 
 ## Requirements
 
@@ -76,13 +76,16 @@ cd Movie-Ticket-Checker
 ./install.sh
 ```
 
-**Windows** (PowerShell):
+**Windows:** download or clone the repo, then **double-click `install.bat`**,
+or from a terminal:
 
-```powershell
+```bat
 git clone https://github.com/sanz-s/Movie-Ticket-Checker.git
 cd Movie-Ticket-Checker
-powershell -ExecutionPolicy Bypass -File .\install.ps1
+install.bat
 ```
+
+No admin rights needed. It opens the dashboard when it's done.
 
 Then open **http://127.0.0.1:8765** and click the bell icon to send a test
 notification.
@@ -91,9 +94,9 @@ notification.
 
 | | macOS | Windows | Linux |
 |---|---|---|---|
-| Installer | `./install.sh` | `install.ps1` | `./install.sh` |
+| Installer | `./install.sh` | `install.bat` | `./install.sh` |
 | App + data | `~/Library/Application Support/doomsday-tracker/` | `%LOCALAPPDATA%\doomsday-tracker\` | `~/.local/share/doomsday-tracker/` |
-| Service | LaunchAgent `com.user.doomsday-tracker` | Task Scheduler task "Ticket Tracker (doomsday-tracker)" | systemd user service `doomsday-tracker` |
+| Service | LaunchAgent `com.user.doomsday-tracker` | `Ticket Tracker.cmd` in your Startup folder | systemd user service `doomsday-tracker` |
 | Logs | `~/Library/Logs/doomsday-tracker.log` | `%LOCALAPPDATA%\doomsday-tracker\tracker.log` | `journalctl --user -u doomsday-tracker -f` |
 
 Options:
@@ -103,9 +106,9 @@ PORT=9000 ./install.sh        # different dashboard port
 ./install.sh --uninstall      # stop + remove the service (keeps your config)
 ```
 
-```powershell
-powershell -ExecutionPolicy Bypass -File .\install.ps1 -Port 9000
-powershell -ExecutionPolicy Bypass -File .\install.ps1 -Uninstall
+```bat
+install.bat port 9000         :: different dashboard port (Windows)
+install.bat uninstall         :: stop + remove auto-start (keeps your config)
 ```
 
 After editing any `.py` / `.html` file, run the installer again to update the
@@ -185,7 +188,7 @@ layout and never holds or reserves seats. Results are cached for 30 seconds.
 | `district_api.py` | location search with address suggestions, and place → District city |
 | `tracker_ui.html` | the dashboard |
 | `install.sh` | install / update / uninstall the service (macOS + Linux) |
-| `install.ps1` | install / update / uninstall the background task (Windows) |
+| `install.bat` | install / update / uninstall on Windows (no admin needed) |
 
 ## Notes and troubleshooting
 
@@ -195,9 +198,10 @@ layout and never holds or reserves seats. Results are cached for 30 seconds.
 - **No notification on Windows?** Check Settings → System → Notifications:
   notifications must be on, and *Windows PowerShell* (the sender) must be
   allowed. Focus / Do not disturb hides them.
-- **Windows: the dashboard doesn't open after login?** Open Task Scheduler and
-  look for "Ticket Tracker (doomsday-tracker)", or check `tracker.log` in the
-  data folder.
+- **Windows: the dashboard doesn't open after login?** Check that
+  `Ticket Tracker.cmd` is in your Startup folder (Win+R → `shell:startup`) and
+  look at `tracker.log` in `%LOCALAPPDATA%\doomsday-tracker`. Run `install.bat`
+  again to restart it.
 - **No notification on Linux?** Install `notify-send`. If the service started
   before your desktop session, run `./install.sh` again from a terminal inside
   the session. To keep it running after you log out, run
