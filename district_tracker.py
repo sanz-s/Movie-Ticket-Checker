@@ -47,12 +47,15 @@ APP = "doomsday-tracker"
 
 def default_state_dir():
     """macOS: ~/Library/Application Support/doomsday-tracker
+    Windows: %LOCALAPPDATA%\\doomsday-tracker
     Linux: $XDG_DATA_HOME/doomsday-tracker (default ~/.local/share/doomsday-tracker)
     Override with the TRACKER_HOME environment variable."""
     if os.environ.get("TRACKER_HOME"):
         return os.path.expanduser(os.environ["TRACKER_HOME"])
     if sys.platform == "darwin":
         return os.path.expanduser(f"~/Library/Application Support/{APP}")
+    if sys.platform == "win32":
+        return os.path.join(os.environ.get("LOCALAPPDATA") or os.path.expanduser("~\\AppData\\Local"), APP)
     base = os.environ.get("XDG_DATA_HOME") or os.path.expanduser("~/.local/share")
     return os.path.join(base, APP)
 
@@ -116,6 +119,14 @@ DEFAULT_CONFIG = {
 UA = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36")
 HHMM = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
+
+
+if hasattr(sys.stdout, "reconfigure"):
+    try:
+        sys.stdout.reconfigure(errors="replace")
+        sys.stderr.reconfigure(errors="replace")
+    except (ValueError, OSError):
+        pass
 
 
 def log(msg):
@@ -183,7 +194,7 @@ def validate_config(raw):
 
 def load_config():
     try:
-        with open(CONFIG_FILE) as f:
+        with open(CONFIG_FILE, encoding="utf-8") as f:
             return validate_config(json.load(f))
     except FileNotFoundError:
         cfg = validate_config({})
@@ -194,7 +205,7 @@ def load_config():
 def save_config(cfg):
     os.makedirs(STATE_DIR, exist_ok=True)
     tmp = CONFIG_FILE + ".tmp"
-    with open(tmp, "w") as f:
+    with open(tmp, "w", encoding="utf-8") as f:
         json.dump(cfg, f, indent=2)
     os.replace(tmp, CONFIG_FILE)
 
@@ -529,10 +540,33 @@ def fetch_popular_cities():
 
 
 # ---------------------------------------------------------------- notify ---
+_WIN_TOAST = r"""
+[Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime] | Out-Null
+[Windows.Data.Xml.Dom.XmlDocument, Windows.Data.Xml.Dom.XmlDocument, ContentType = WindowsRuntime] | Out-Null
+$e = { param($s) [System.Security.SecurityElement]::Escape($s) }
+$xml = "<toast><visual><binding template='ToastGeneric'><text>" + (& $e $env:TT_TITLE) + "</text>"
+if ($env:TT_SUB) { $xml += "<text>" + (& $e $env:TT_SUB) + "</text>" }
+$xml += "<text>" + (& $e $env:TT_BODY) + "</text></binding></visual><audio src='ms-winsoundevent:Notification.Reminder'/></toast>"
+$doc = New-Object Windows.Data.Xml.Dom.XmlDocument
+$doc.LoadXml($xml)
+$app = '{1AC14E77-02E7-4E5D-B744-2EB1AE5198B7}\WindowsPowerShell\v1.0\powershell.exe'
+[Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier($app).Show([Windows.UI.Notifications.ToastNotification]::new($doc))
+"""
+
+
 def notify(title, message, subtitle="", icon="video-display"):
-    """Desktop notification: osascript on macOS, notify-send on Linux.
-    Falls back to the log if neither is available."""
+    """Desktop notification: osascript on macOS, a toast on Windows,
+    notify-send on Linux. Falls back to the log if none is available."""
     try:
+        if sys.platform == "win32":
+            # Windows PowerShell 5.1 (built in) can show toasts; text goes via env vars, never into the script
+            ps = shutil.which("powershell.exe") or shutil.which("powershell")
+            if ps:
+                env = {**os.environ, "TT_TITLE": title, "TT_SUB": subtitle, "TT_BODY": message}
+                subprocess.run([ps, "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
+                                "-Command", _WIN_TOAST], env=env, check=False, timeout=30,
+                               capture_output=True, creationflags=0x08000000)  # CREATE_NO_WINDOW
+                return
         if sys.platform == "darwin":
             def esc(s):
                 return s.replace("\\", "\\\\").replace('"', '\\"')
@@ -559,7 +593,7 @@ def pretty_date(d):
 # ----------------------------------------------------------------- state ---
 def load_state():
     try:
-        with open(STATE_FILE) as f:
+        with open(STATE_FILE, encoding="utf-8") as f:
             return json.load(f)
     except Exception:  # noqa: BLE001
         return {"seen": {}, "fails": 0, "broken_alerted": False}
@@ -568,7 +602,7 @@ def load_state():
 def save_state(st):
     os.makedirs(STATE_DIR, exist_ok=True)
     tmp = STATE_FILE + ".tmp"
-    with open(tmp, "w") as f:
+    with open(tmp, "w", encoding="utf-8") as f:
         json.dump(st, f, indent=1)
     os.replace(tmp, STATE_FILE)
 
@@ -613,7 +647,7 @@ def process_alerts(cfg, st, shows, extra_hint=""):
             notify(f"{len(fresh)} shows open: {movie}", lines + more + extra_hint,
                    f"{cfg['language']} · {cfg['window_start']}–{cfg['window_end']} · your theatres")
         os.makedirs(STATE_DIR, exist_ok=True)
-        with open(os.path.join(STATE_DIR, "alerts.log"), "a") as f:
+        with open(os.path.join(STATE_DIR, "alerts.log"), "a", encoding="utf-8") as f:
             for s in fresh:
                 log(f"ALERT: {s['theatre']} {s['date']} {s['time']} {s['format']} "
                     f"{s['avail']} seats ({s['good_status']}) -> {s['url']}")

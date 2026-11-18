@@ -15,6 +15,7 @@ and using them may be against District's terms of service.
 """
 
 import json
+import os
 import sys
 import urllib.error
 import urllib.parse
@@ -124,9 +125,9 @@ def probe(text):
     res = search_locations(text)
     print("== location search shape:")
     print(json.dumps(_shape(res, maxd=5), indent=1)[:2500])
-    with open(T.STATE_DIR + "/location_search_sample.json", "w") as f:
+    with open(os.path.join(T.STATE_DIR, "location_search_sample.json"), "w", encoding="utf-8") as f:
         json.dump(res, f, indent=1)
-    print("saved", T.STATE_DIR + "/location_search_sample.json")
+    print("saved", os.path.join(T.STATE_DIR, "location_search_sample.json"))
 
 
 def location_from_pre_home(lat, lng):
@@ -152,7 +153,7 @@ def probe_sessions(lat, lng, movie_code="mm5dpqtqjz"):
     print("   nearby/far cinemas:", [(c.get("cinemaInfo") or c).get("name", "")[:40] for c in cin][:8])
     print("   sessions by cinema id:", {k: len(v) for k, v in list(sess.items())[:8]} if isinstance(sess, dict) else type(sess))
     print("   cinemasMap:", [v.get("name", "")[:40] for v in list(cmap.values())[:8]] if isinstance(cmap, dict) else type(cmap))
-    with open(T.STATE_DIR + "/sessions_sample.json", "w") as f:
+    with open(os.path.join(T.STATE_DIR, "sessions_sample.json"), "w", encoding="utf-8") as f:
         json.dump(data, f, indent=1)
 
 

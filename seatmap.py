@@ -33,12 +33,12 @@ TOKEN_TTL = 30 * 60
 
 def device_id():
     try:
-        with open(DEVICE_FILE) as f:
+        with open(DEVICE_FILE, encoding="utf-8") as f:
             return f.read().strip()
     except FileNotFoundError:
         os.makedirs(T.STATE_DIR, exist_ok=True)
         d = str(uuid.uuid4())
-        with open(DEVICE_FILE, "w") as f:
+        with open(DEVICE_FILE, "w", encoding="utf-8") as f:
             f.write(d)
         return d
 
@@ -154,7 +154,7 @@ def probe():
     print("session", sess["encSessionId"], T.to_ist(sess["showTime"]))
     data = fetch_raw(cfg, sess)
     out = os.path.join(T.STATE_DIR, "seatmap_sample.json")
-    with open(out, "w") as f:
+    with open(out, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=1)
     print("ok, top-level keys:", list(data.keys())[:30])
     print("saved to", out)

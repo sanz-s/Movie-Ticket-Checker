@@ -14,6 +14,7 @@ Stdlib only. Reuses district_tracker.py (must sit in the same folder).
 import argparse
 import json
 import os
+import sys
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -320,7 +321,10 @@ def make_handler(tracker):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--port", type=int, default=8765)
+    ap.add_argument("--log", help="append output to this file (used on Windows, where the background task has no console)")
     a = ap.parse_args()
+    if a.log:
+        sys.stdout = sys.stderr = open(a.log, "a", encoding="utf-8", buffering=1)
 
     tracker = Tracker()
     threading.Thread(target=tracker.loop, daemon=True).start()
