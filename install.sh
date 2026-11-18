@@ -12,7 +12,7 @@ APP="doomsday-tracker"
 LABEL="com.user.$APP"
 PORT="${PORT:-8765}"
 SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-FILES=(district_tracker.py tracker_server.py seatmap.py tracker_ui.html)
+FILES=(district_tracker.py tracker_server.py seatmap.py district_api.py tracker_ui.html)
 OS="$(uname -s)"
 
 if [[ "$OS" == "Darwin" ]]; then

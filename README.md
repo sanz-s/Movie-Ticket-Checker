@@ -111,6 +111,7 @@ data folder. It is created with defaults on first run.
 | Key | Meaning | Default |
 |---|---|---|
 | `city` | District city key (`chennai`, `bengaluru`, `delhi-ncr`, `kochi`, …) | `chennai` |
+| `location_label` | place picked in the location search (display only) | empty |
 | `movie_name` | name used in notifications | `Avengers: Doomsday` |
 | `movie_url` | District movie page; its city part always follows `city` | Doomsday |
 | `language` | show language | `English` |
@@ -127,8 +128,10 @@ data folder. It is created with defaults on first run.
 
 Settings → **Movie & location**:
 
-1. Pick a city from the list of popular cities, or type any District city
-   (e.g. `coimbatore`, `kochi`) into **Other city** and press **Go**.
+1. Search a city, area or landmark. Suggestions show the address, like
+   District's own location search. Check it: a search for "madurai" also
+   suggests a place called *MADURAI* in Gurugram, Haryana. Picking a suggestion
+   sets District's city for that spot. Or click one of the popular city buttons.
 2. Pick a movie. The list has movies **open** for booking in that city and
    **upcoming** ones with their release date, so you can track a movie before any
    cinema there opens bookings. The dashboard then says it's not open yet, and
@@ -152,6 +155,8 @@ layout and never holds or reserves seats. Results are cached for 30 seconds.
   HTTP 412). The panel then shows the per-section counts instead.
 - This relies on District's private API. It may change without notice and may
   be against their terms of use. Use it gently and at your own risk.
+- The location search in Settings uses District's private location API in the
+  same way (read-only, only when you type).
 
 ## Files
 
@@ -160,6 +165,7 @@ layout and never holds or reserves seats. Results are cached for 30 seconds.
 | `district_tracker.py` | fetch + parse District showtimes, filters, alerts, config, notifications |
 | `tracker_server.py` | background checker + dashboard web server (`127.0.0.1` only) |
 | `seatmap.py` | read-only seat-map fetch for one show |
+| `district_api.py` | location search with address suggestions, and place → District city |
 | `tracker_ui.html` | the dashboard |
 | `install.sh` | install / update / uninstall the service (macOS + Linux) |
 

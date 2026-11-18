@@ -89,6 +89,7 @@ SITES = {
 
 DEFAULT_CONFIG = {
     "city": "chennai",
+    "location_label": "",   # e.g. "Sellur, Madurai, Tamil Nadu" (shown in the dashboard)
     "movie_name": "Avengers: Doomsday",
     "movie_url": "https://www.district.in/movies/avengers-doomsday-movie-tickets-in-chennai-MV176735",
     "language": "English",
@@ -151,6 +152,8 @@ def validate_config(raw):
                 cfg["sites"][s] = bool(raw["sites"][s]) and SITES[s]["supported"]
     if cfg["open_links_on"] not in ("district", "ticketnew"):
         cfg["open_links_on"] = "district"
+    if isinstance(raw.get("location_label"), str):
+        cfg["location_label"] = raw["location_label"].strip()[:120]
     if raw.get("city"):
         city = str(raw["city"]).strip().lower().replace(" ", "-")
         if not CITY_RE.match(city):

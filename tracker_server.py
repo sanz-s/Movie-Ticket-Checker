@@ -19,6 +19,7 @@ import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import district_tracker as T
+import district_api
 import seatmap
 from urllib.parse import parse_qs, urlparse
 
@@ -171,6 +172,7 @@ class Tracker:
             base = {
                 "movie": cfg["movie_name"], "language": cfg["language"],
                 "city": cfg["city"], "city_name": T.city_name(cfg["city"]),
+                "location_label": cfg.get("location_label") or "",
                 "window": [cfg["window_start"], cfg["window_end"]],
                 "min_seats": cfg["min_seats"], "interval": cfg["interval_seconds"],
                 "front_classes": cfg["front_classes"],
@@ -247,6 +249,24 @@ def make_handler(tracker):
                 if not tracker.directory:
                     tracker.refresh_directory()
                 self._json(200, tracker.config_payload())
+            elif self.path.startswith("/api/locations"):
+                q = (parse_qs(urlparse(self.path).query).get("q") or [""])[0].strip()[:60]
+                if len(q) < 2:
+                    return self._json(200, [])
+                try:
+                    self._json(200, tracker._cached(("loc", q.lower()), 3600, lambda: district_api.location_suggestions(q)))
+                except Exception as e:  # noqa: BLE001
+                    self._json(502, {"error": f"location search failed: {e}"})
+            elif self.path.startswith("/api/resolve"):
+                qs = parse_qs(urlparse(self.path).query)
+                try:
+                    lat, lng = float(qs["lat"][0]), float(qs["lng"][0])
+                    self._json(200, tracker._cached(("city", round(lat, 4), round(lng, 4)), 86400,
+                                                    lambda: district_api.city_for(lat, lng)))
+                except (KeyError, ValueError) as e:
+                    self._json(400, {"error": str(e)})
+                except Exception as e:  # noqa: BLE001
+                    self._json(502, {"error": f"couldn't resolve location: {e}"})
             elif self.path.startswith(("/api/cities", "/api/movies", "/api/cinemas")):
                 city = (parse_qs(urlparse(self.path).query).get("city") or [""])[0].strip().lower().replace(" ", "-")
                 try:
