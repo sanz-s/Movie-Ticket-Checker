@@ -37,6 +37,7 @@ import json
 import os
 import re
 import shutil
+import ssl
 import subprocess
 import sys
 import time
@@ -215,13 +216,55 @@ def checking_enabled(cfg):
 
 
 # ----------------------------------------------------------------- fetch ---
+_SSL = None
+
+
+def ssl_context():
+    """HTTPS context that still verifies certificates, but trusts more than
+    Python's own store: the certifi bundle if installed and, on macOS, the
+    system keychains (what Safari/Chrome trust, incl. company root CAs).
+    Fixes CERTIFICATE_VERIFY_FAILED on python.org Python, which ships with an
+    empty store until 'Install Certificates.command' is run. Windows Python
+    already uses the Windows certificate store."""
+    global _SSL
+    if _SSL is not None:
+        return _SSL
+    ctx = ssl.create_default_context()
+    try:
+        import certifi  # optional
+        ctx.load_verify_locations(certifi.where())
+    except (ImportError, OSError, ssl.SSLError):
+        pass
+    if sys.platform == "darwin":
+        pem = ""
+        for kc in ("/System/Library/Keychains/SystemRootCertificates.keychain",
+                   "/Library/Keychains/System.keychain"):
+            try:
+                pem += subprocess.run(["security", "find-certificate", "-a", "-p", kc],
+                                      capture_output=True, text=True, timeout=20).stdout
+            except (OSError, subprocess.SubprocessError):
+                pass
+        if "BEGIN CERTIFICATE" in pem:
+            try:
+                ctx.load_verify_locations(cadata=pem)
+            except ssl.SSLError:
+                # one bad cert shouldn't block the rest: load them one by one
+                for block in pem.split("-----END CERTIFICATE-----"):
+                    if "BEGIN CERTIFICATE" in block:
+                        try:
+                            ctx.load_verify_locations(cadata=block + "-----END CERTIFICATE-----\n")
+                        except ssl.SSLError:
+                            pass
+    _SSL = ctx
+    return ctx
+
 def fetch(url, tries=3):
     last = None
     for i in range(tries):
         try:
             req = urllib.request.Request(url, headers={
                 "User-Agent": UA, "Accept-Language": "en-IN,en;q=0.9"})
-            with urllib.request.urlopen(req, timeout=30) as r:
+            with urllib.request.urlopen(req, timeout=30, context=ssl_context()) as r:
                 return r.read().decode("utf-8", "ignore")
         except Exception as e:  # noqa: BLE001
             last = e

@@ -206,6 +206,12 @@ layout and never holds or reserves seats. Results are cached for 30 seconds.
   before your desktop session, run `./install.sh` again from a terminal inside
   the session. To keep it running after you log out, run
   `loginctl enable-linger $USER`.
+- **"CERTIFICATE_VERIFY_FAILED"**: Python can't verify HTTPS certificates.
+  The tracker already adds your Mac's system certificates (and `certifi` if
+  installed), so updating to the latest version fixes most cases. With the
+  python.org installer on macOS you can also run *Install Certificates.command*
+  from the Python folder in Applications. On a company network that inspects
+  HTTPS, its root certificate must be trusted by the OS.
 - **Red banner "fetch failed"**: District may be rate-limiting you. Raise
   `interval_seconds`. The checker also backs off on its own.
 - The computer must be awake for checks to run.

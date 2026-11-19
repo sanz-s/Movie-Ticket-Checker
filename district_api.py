@@ -51,7 +51,7 @@ def _req(method, path, body=None, loc=None, query=None):
     data = json.dumps(body).encode() if body is not None else None
     req = urllib.request.Request(url, data=data, headers=h, method=method)
     try:
-        with urllib.request.urlopen(req, timeout=20) as r:
+        with urllib.request.urlopen(req, timeout=20, context=T.ssl_context()) as r:
             return r.status, json.loads(r.read().decode("utf-8", "ignore") or "{}")
     except urllib.error.HTTPError as e:
         try:

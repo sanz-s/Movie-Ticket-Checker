@@ -50,7 +50,7 @@ def _post(path, body, headers=None):
     h.update(headers or {})
     req = urllib.request.Request(GW + path, data=json.dumps(body).encode(), headers=h, method="POST")
     try:
-        with urllib.request.urlopen(req, timeout=20) as r:
+        with urllib.request.urlopen(req, timeout=20, context=T.ssl_context()) as r:
             return r.status, dict(r.headers), json.loads(r.read().decode("utf-8", "ignore") or "{}")
     except urllib.error.HTTPError as e:
         try:
